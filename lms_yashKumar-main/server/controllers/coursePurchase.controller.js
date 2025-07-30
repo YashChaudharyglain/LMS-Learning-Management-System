@@ -3,8 +3,37 @@ import { Course } from "../models/course.model.js";
 import { CoursePurchase } from "../models/coursePurchase.model.js";
 import { Lecture } from "../models/lecture.model.js";
 import { User } from "../models/user.model.js";
+import nodemailer from "nodemailer";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// Helper to send purchase success email
+const sendPurchaseSuccessEmail = async (to, courseTitle) => {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER, // Use environment variable
+      pass: process.env.EMAIL_PASS, // Use environment variable
+    },
+  });
+const mailOptions = {
+  from: `LMS <${process.env.EMAIL_USER}>`,
+  to,
+  subject: 'Your Course Purchase Was Successful!',
+  text: `Thank you for your purchase!\n\nYou've successfully enrolled in:\nCourse: ${courseTitle}\n\nWe’re excited to have you on board. Let’s get started with your learning journey!`,
+  html: `
+    <div style="font-family: Arial, sans-serif; color: #333;">
+      <h2 style="color: #2e6c80;">Thank you for your purchase!</h2>
+      <p>You’ve successfully enrolled in the following course:</p>
+      <p><strong>Course:</strong> ${courseTitle}</p>
+      <p>We’re excited to have you on board. Let’s get started with your learning journey!</p>
+      <br>
+      <p>— The LMS Team</p>
+    </div>
+  `
+};
+  await transporter.sendMail(mailOptions);
+};
 
 export const createCheckoutSession = async (req, res) => {
   try {
@@ -21,7 +50,6 @@ export const createCheckoutSession = async (req, res) => {
       amount: course.coursePrice,
       status: "pending",
     });
-
     // Create a Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -58,7 +86,18 @@ export const createCheckoutSession = async (req, res) => {
 
     // Save the purchase record
     newPurchase.paymentId = session.id;
+    newPurchase.status = "completed";
     await newPurchase.save();
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found!" });
+    }
+    const userCourse = await Course.findById(courseId);
+    if (!userCourse) {
+      return res.status(404).json({ message: "Course not found!" });
+    }
+    await sendPurchaseSuccessEmail(user.email, userCourse.courseTitle || "your course");
+
 
     return res.status(200).json({
       success: true,
@@ -82,6 +121,8 @@ export const stripeWebhook = async (req, res) => {
     });
 
     event = stripe.webhooks.constructEvent(payloadString, header, secret);
+    console.log("[STRIPE WEBHOOK] Event received:", event.type);
+    console.log("[STRIPE WEBHOOK] Event data:", JSON.stringify(event.data, null, 2));
   } catch (error) {
     console.error("Webhook error:", error.message);
     return res.status(400).send(`Webhook error: ${error.message}`);
@@ -89,16 +130,16 @@ export const stripeWebhook = async (req, res) => {
 
   // Handle the checkout session completed event
   if (event.type === "checkout.session.completed") {
-    console.log("check session complete is called");
-
+    console.log("[STRIPE WEBHOOK] checkout.session.completed called");
     try {
       const session = event.data.object;
-
+      console.log("[STRIPE WEBHOOK] Session object:", JSON.stringify(session, null, 2));
       const purchase = await CoursePurchase.findOne({
         paymentId: session.id,
       }).populate({ path: "courseId" });
 
       if (!purchase) {
+        console.log("[STRIPE WEBHOOK] Purchase not found for paymentId:", session.id);
         return res.status(404).json({ message: "Purchase not found" });
       }
 
@@ -116,13 +157,23 @@ export const stripeWebhook = async (req, res) => {
       }
 
       await purchase.save();
+      console.log("[STRIPE WEBHOOK] Purchase marked as completed for:", purchase._id);
 
       // Update user's enrolledCourses
-      await User.findByIdAndUpdate(
+      const user = await User.findByIdAndUpdate(
         purchase.userId,
-        { $addToSet: { enrolledCourses: purchase.courseId._id } }, // Add course ID to enrolledCourses
+        { $addToSet: { enrolledCourses: purchase.courseId._id } },
         { new: true }
       );
+      // Send email to user (if user found and has email)
+      if (user && user.email) {
+        try {
+          await sendPurchaseSuccessEmail(user.email, purchase.courseId.courseTitle || "your course");
+          console.log(`[EMAIL] Sent purchase success email to ${user.email}`);
+        } catch (emailErr) {
+          console.error("[EMAIL] Failed to send purchase email:", emailErr);
+        }
+      }
 
       // Update course to add user ID to enrolledStudents
       await Course.findByIdAndUpdate(
@@ -177,5 +228,22 @@ export const getAllPurchasedCourse = async (_, res) => {
     });
   } catch (error) {
     console.log(error);
+  }
+};
+
+// ADMIN: Mark all pending purchases as completed (for testing/demo)
+export const markAllPurchasesCompleted = async (req, res) => {
+  try {
+    const result = await CoursePurchase.updateMany(
+      { status: "pending" },
+      { $set: { status: "completed" } }
+    );
+    return res.status(200).json({
+      message: `Marked ${result.modifiedCount} purchases as completed.`,
+      result,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Failed to update purchases" });
   }
 };

@@ -1,6 +1,6 @@
 import express from "express";
 import isAuthenticated from "../middlewares/isAuthenticated.js";
-import { createCourse, createLecture, editCourse, editLecture, getCourseById, getCourseLecture, getCreatorCourses, getLectureById, getPublishedCourse, removeLecture, searchCourse, togglePublishCourse } from "../controllers/course.controller.js";
+import { createCourse, createLecture, editCourse, editLecture, getCourseById, getCourseLecture, getCreatorCourses, getLectureById, getPublishedCourse, removeLecture, searchCourse, togglePublishCourse, deleteCourse, deleteAllCourses } from "../controllers/course.controller.js";
 import upload from "../utils/multer.js";
 const router = express.Router();
 
@@ -16,6 +16,10 @@ router.route("/:courseId/lecture/:lectureId").post(isAuthenticated, editLecture)
 router.route("/lecture/:lectureId").delete(isAuthenticated, removeLecture);
 router.route("/lecture/:lectureId").get(isAuthenticated, getLectureById);
 router.route("/:courseId").patch(isAuthenticated, togglePublishCourse);
+// Delete a single course by ID
+router.route("/:courseId").delete(isAuthenticated, deleteCourse);
+// Delete all courses (admin bulk delete)
+router.route("/admin/delete-all").delete(isAuthenticated, deleteAllCourses);
 
 
 export default router;

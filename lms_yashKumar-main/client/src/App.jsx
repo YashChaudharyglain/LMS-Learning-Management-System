@@ -4,7 +4,6 @@ import Login from "./pages/Login";
 import HeroSection from "./pages/student/HeroSection";
 import MainLayout from "./layout/MainLayout";
 import Courses from "./pages/student/Courses";
-import MyLearning from "./pages/student/MyLearning";
 import Profile from "./pages/student/Profile";
 import Sidebar from "./pages/admin/Sidebar";
 import Dashboard from "./pages/admin/Dashboard";
@@ -44,14 +43,6 @@ const appRouter = createBrowserRouter([
           <AuthenticatedUser>
             <Login />
           </AuthenticatedUser>
-        ),
-      },
-      {
-        path: "my-learning",
-        element: (
-          <ProtectedRoute>
-            <MyLearning />
-          </ProtectedRoute>
         ),
       },
       {

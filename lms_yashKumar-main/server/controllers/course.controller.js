@@ -2,6 +2,7 @@
 import { Course } from "../models/course.model.js";
 import { Lecture } from "../models/lecture.model.js";
 import {deleteMediaFromCloudinary, deleteVideoFromCloudinary, uploadMedia} from "../utils/cloudinary.js";
+import { CoursePurchase } from "../models/coursePurchase.model.js";
 
 export const createCourse = async (req,res) => {
     try {
@@ -337,3 +338,41 @@ export const togglePublishCourse = async (req,res) => {
         })
     }
 }
+
+// Delete a single course by ID (admin)
+export const deleteCourse = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const course = await Course.findByIdAndDelete(courseId);
+    if (!course) {
+      return res.status(404).json({ message: "Course not found!" });
+    }
+    // Delete all purchases related to this course
+    await CoursePurchase.deleteMany({ courseId });
+    // Delete all lectures related to this course
+    await Lecture.deleteMany({ _id: { $in: course.lectures } });
+    return res.status(200).json({ message: "Course and related data deleted." });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Failed to delete course" });
+  }
+};
+
+// Delete all courses (admin bulk delete)
+export const deleteAllCourses = async (req, res) => {
+  try {
+    const allCourses = await Course.find({});
+    const allCourseIds = allCourses.map(c => c._id);
+    const allLectureIds = allCourses.flatMap(c => c.lectures);
+    // Delete all courses
+    await Course.deleteMany({});
+    // Delete all purchases
+    await CoursePurchase.deleteMany({ courseId: { $in: allCourseIds } });
+    // Delete all lectures
+    await Lecture.deleteMany({ _id: { $in: allLectureIds } });
+    return res.status(200).json({ message: "All courses, purchases, and lectures deleted." });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Failed to delete all courses" });
+  }
+};
