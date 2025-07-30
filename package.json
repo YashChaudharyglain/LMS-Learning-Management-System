@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "mongoose": "^8.16.4",
-    "nodemailer": "^7.0.5"
-  }
-}
